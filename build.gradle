@@ -1,0 +1,51 @@
+plugins {
+    id "com.gradle.plugin-publish" version "0.18.0"
+}
+
+plugins.apply("java")
+plugins.apply("idea")
+plugins.apply("maven-publish")
+plugins.apply("groovy")
+plugins.apply("java-gradle-plugin")
+
+wrapper {
+    gradleVersion = "8.1.1"
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://www.jitpack.io" }
+}
+
+dependencies {
+    compileOnly gradleApi()
+}
+
+project.sourceSets.main.java.srcDirs = ["src/java"]
+project.sourceSets.main.resources.srcDirs = ["res"]
+project.sourceSets.main.groovy.srcDirs = ["src/groovy"]
+
+version = "v0.0.2"
+group = "github.nekit508.mmg-plugin"
+
+gradlePlugin {
+    plugins {
+        simplePlugin {
+            id = group
+            implementationClass = "com.nekit508.mmgp.MMGPlugin"
+        }
+    }
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId group
+            artifactId "${group}.gradle.plugin"
+            version version
+            from components.java
+            println "Dependency path for project ${project} is ${groupId}:${artifactId}:${version}."
+        }
+    }
+}
+

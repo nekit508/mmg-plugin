@@ -1,0 +1,12 @@
+### Gradle
+local.properties
+build/
+cache/
+/.gradle/
+/artifacts/
+
+### idea
+/.idea/
+
+### Generated
+gen/

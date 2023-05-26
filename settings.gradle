@@ -1,0 +1,12 @@
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+        mavenLocal()
+        maven { url "https://www.jitpack.io" }
+    }
+}
+
+rootProject.name = "mmg-plugin"
+
+include "test"
