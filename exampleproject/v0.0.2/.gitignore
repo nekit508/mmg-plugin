@@ -1,0 +1,10 @@
+### Gradle
+/local.properties
+build/
+cache/
+/.gradle/
+/artifacts/
+/copy.properties
+
+### idea
+/.idea/
