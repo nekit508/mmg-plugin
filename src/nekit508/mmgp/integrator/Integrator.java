@@ -3,6 +3,7 @@ package nekit508.mmgp.integrator;
 import arc.Events;
 import arc.files.Fi;
 import arc.util.Log;
+import arc.util.serialization.JsonReader;
 import com.sun.tools.javac.Main;
 import nekit508.mmgp.core.events.EventTypes;
 import nekit508.mmgp.core.file.Formatter;
@@ -50,6 +51,13 @@ public class Integrator {
         if (versionFile.exists())
             projectPluginVersion = versionFile.readString();
 
-        new MigrationSettings().migrate(version, projectPluginVersion);
+        //new MigrationSettings().migrate(version, projectPluginVersion);
+
+        try {
+            URL url = new URL("https://github.com/nekit508/mmg-plugin/archive/refs/heads/main.zip");
+            url.
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

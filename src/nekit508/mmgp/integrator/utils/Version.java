@@ -20,7 +20,5 @@ public final class Version {
         return Strings.format("v@.@.@", number / 1000000000, number / 1000000, number / 1000);
     }
 
-    public static String nextVersion(String version) {
 
-    }
 }

@@ -1,0 +1,286 @@
+import arc.files.Fi
+import arc.struct.ObjectMap
+import arc.struct.Seq
+
+import java.util.function.Consumer
+
+buildscript {
+    repositories {
+        mavenCentral()
+        maven { url "https://www.jitpack.io" }
+    }
+
+    dependencies {
+        classpath "com.github.Anuken.Arc:arc-core:v144.3"
+    }
+}
+
+allprojects.each { Project project ->
+    project.plugins.apply("java")
+    project.plugins.apply("idea")
+    project.plugins.apply("maven-publish")
+
+    project.version = properties.get("version")
+    project.group = properties.get("group")
+
+    tasks.withType(JavaCompile).configureEach {
+        options.fork = true
+        options.forkOptions.jvmArgs += "-Xms256m -Xmx1024m --illegal-access=permit" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED" +
+                "--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED" +
+                "--add-opens=java.base/sun.reflect.annotation=ALL-UNNAMED"
+    }
+}
+
+wrapper {
+    gradleVersion = "8.1.1"
+}
+
+sourceSets.main.java.srcDirs = []
+sourceSets.main.resources.srcDirs = []
+
+task cleanBuilds(type: Delete) {
+    doLast {
+        subprojects.each { Project p ->
+            if (p.buildDir.exists()) {
+                delete(p.buildDir)
+            }
+        }
+    }
+}
+
+class C extends OutputStream {
+    static String out = ""
+
+    @Override
+    void write(int b) throws IOException {
+        out += String.valueOf((char) b)
+    }
+
+    static String get() {
+        String t = out
+        out = ""
+        return t
+    }
+
+    static void print() {
+        println out
+    }
+}
+
+ext {
+    modConfig = new Fi(rootProject.file("mod.hjson"))
+
+    copyProperties = new Properties()
+    if (rootProject.file("copy.properties").exists())
+        copyProperties.load(new FileInputStream(rootProject.file("copy.properties")))
+
+    localProperties = new Properties()
+    if (new File("$rootProject.projectDir/local.properties").exists())
+        localProperties.load(new FileInputStream(new File("$rootProject.projectDir/local.properties")))
+
+    setIfHasProp = { String property, Consumer<Object> set ->
+        if (localProperties.containsKey(property))
+            set.accept(localProperties.get(property))
+    }
+
+    doExec = { String cmd ->
+        C.get()
+        var proc = cmd.execute(null, rootProject.projectDir)
+        proc.waitForProcessOutput(new PrintStream(new C()), System.err)
+    }
+
+    getOutputJar = {Project p ->
+        return "${rootProject.name}-${p.name}-${p.version}.jar"
+    }
+}
+
+subprojects.each { Project project ->
+    project.sourceSets.main.java.srcDirs = [
+            "src", "gen"
+    ]
+    project.sourceSets.main.resources.srcDirs = [
+            "res",
+    ]
+
+    project.ext {
+        APArgs = ["ProjectName=${project.name}"]
+        var APAProps = new Fi(project.file("APA.properties"))
+        var GAPAProps = new Fi(rootProject.file("APA.properties"))
+        if (GAPAProps.exists()) {
+            APArgs += Arrays.stream(GAPAProps.readString().split(";")).toList()
+        }
+        if (APAProps.exists()) {
+            APArgs += Arrays.stream(APAProps.readString().split(";")).toList()
+        }
+
+        copyPaths = [
+                "$rootProject.projectDir/artifacts",
+        ]
+        if (rootProject.ext.copyProperties.containsKey(project.name))
+            copyPaths += Arrays.stream(rootProject.ext.copyProperties.get(project.name).split(";")).toList()
+
+        mindustryVersion = "v144.3"
+
+        child = { File p, String c ->
+            return new File(p, c)
+        }
+
+        writeProcessors = {
+            var processorPath = child(project.sourceSets.main.resources.srcDirs.getAt(0), "META-INF/services/")
+            processorPath.mkdirs()
+            var processorFile = child(processorPath, ("javax.annotation.processing.Processor"))
+            var text = new StringBuilder()
+            var srcFiles = project.sourceSets.main.java.srcDirs.getAt(0)
+            if (srcFiles.exists()) {
+                srcFiles.eachFileRecurse(groovy.io.FileType.FILES) { file ->
+                    if (file.name.endsWith(".java") && ((file.text.contains(" extends AbstractProcessor")
+                            && !file.text.contains("abstract class")))) {
+                        text.append(file.path.substring(srcFiles.path.length() + 1)).append("\n")
+                    }
+                }
+            }
+            processorFile.text = text.toString().replace(".java", "").replace("/", ".").replace("\\", ".")
+        }
+    }
+
+    project.repositories {
+        mavenCentral()
+        maven { url "https://www.jitpack.io" }
+    }
+
+    project.dependencies {
+        annotationProcessor "com.github.Anuken:jabel:93fde537c7"
+    }
+
+    project.tasks.withType(JavaCompile).configureEach {
+        targetCompatibility = 8
+        sourceCompatibility = JavaVersion.VERSION_16
+        options.generatedSourceOutputDirectory.set(project.file("gen"))
+        rootProject.ext.setIfHasProp("org.gradle.java.home", v -> options.forkOptions.executable = v)
+        options.encoding = "UTF-8"
+        var finalAPArgs = []
+        project.ext.APArgs.each { String str ->
+            if (!str.contains("-A"))
+                finalAPArgs.add("-A" + str)
+        }
+        options.compilerArgs += finalAPArgs
+        if (JavaVersion.current() != JavaVersion.VERSION_1_8) {
+            options.compilerArgs.addAll(['--release', '8'])
+        }
+
+        doFirst {
+            delete options.generatedSourceOutputDirectory.get().asFile.listFiles()
+        }
+    }
+
+    project.tasks.create("copyJar") {
+        doLast {
+            copy {
+                from {
+                    project.tasks.jar.archiveFile.get()
+                }
+                project.ext.copyPaths.each { p ->
+                    into(p)
+                }
+            }
+        }
+    }
+
+    project.tasks.create("cjar") {
+        dependsOn project.tasks.jar
+        finalizedBy rootProject.tasks.cleanBuilds
+    }
+
+    project.tasks.jar {
+        archiveFileName = rootProject.ext.getOutputJar(project)
+
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        from {
+            project.configurations.runtimeClasspath.collect { File file ->
+                file.isDirectory() ? file : zipTree(file)
+            }
+        }
+
+        finalizedBy project.tasks.copyJar
+    }
+
+    project.java {
+        withSourcesJar()
+        withJavadocJar()
+    }
+
+    project.publishing {
+        publications {
+            maven(MavenPublication) {
+                groupId "github.${project.group.replaceAll("/", ".")}"
+                artifactId project.name
+                version project.version
+                from components.java
+                println "Dependency path for project ${project} is ${groupId}:${artifactId}:${version}"
+            }
+        }
+    }
+}
+
+task publishProj {
+    doLast {
+        publishToMavenLocal
+    }
+}
+
+task deploy {
+    dependsOn subprojects.stream().<Task>map(p -> p.tasks.jar).toArray()
+    finalizedBy rootProject.tasks.cleanBuilds
+}
+
+task workflowCommit {
+    dependsOn deploy
+}
+
+// only for local machine (still in dev)
+task createRelease {
+    dependsOn deploy
+
+    doLast {
+        var vers = new Properties()
+        vers.load(new FileInputStream(project.file("version.properties")))
+        var descr = ""
+
+        if (vers.containsKey("description"))
+            descr = vers.get("description")
+
+        var un = "", ue = "", ut = ""
+        var tagName = project.version
+
+        // setup github user
+        setIfHasProp("username", v -> un = v)
+        setIfHasProp("useremail", v -> ue = v)
+        setIfHasProp("usertoken", v -> ut = v)
+        doExec("git config user.name $un --replace-all")
+        doExec("git config user.email $ue --replace-all")
+        var addr = "https://$un:$ut@github.com/${project.group}.git"
+
+        // delete older tag with same name
+        doExec("git tag")
+        var tags = C.get().split("\n")
+        if (Arrays.stream(tags).toList().contains(tagName)) {
+            doExec("git tag -d $tagName")
+            doExec("git push $addr -d tag $tagName")
+            C.print()
+        }
+
+        // push new tag
+        doExec("git tag -a $tagName -m \"${descr}")
+        doExec("git push $addr main $tagName")
+    }
+}
